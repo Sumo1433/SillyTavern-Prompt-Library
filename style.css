@@ -34,7 +34,11 @@
         --plib-soft-1: color-mix(in srgb, var(--plib-text) 5%, transparent);
         --plib-soft-2: color-mix(in srgb, var(--plib-text) 9%, transparent);
         --plib-soft-3: color-mix(in srgb, var(--plib-text) 18%, transparent);
-        --plib-sunk: color-mix(in srgb, var(--plib-base, #000) 55%, transparent);
+        --plib-sunk: color-mix(in srgb, var(--plib-text) 4%, rgba(0, 0, 0, .22));
+    }
+
+    #plib_host .plib-panel {
+        background: linear-gradient(color-mix(in srgb, var(--plib-bg) 88%, #000 12%), color-mix(in srgb, var(--plib-bg) 88%, #000 12%)), var(--plib-base, #161616);
     }
 }
 
@@ -55,7 +59,6 @@
     /* Непрозрачная подложка цвета темы: на телефоне таверна часто отключает размытие,
        и полупрозрачный фон показывал бы чат сквозь окно. --plib-base ставит ui.js. */
     background: linear-gradient(var(--plib-bg), var(--plib-bg)), var(--plib-base, #161616);
-    background: linear-gradient(color-mix(in srgb, var(--plib-bg) 88%, #000 12%), color-mix(in srgb, var(--plib-bg) 88%, #000 12%)), var(--plib-base, #161616);
     backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
     border: 1px solid var(--plib-border);
     border-radius: calc(var(--plib-radius) + 4px);

@@ -15,9 +15,28 @@ export function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-/** Новая запись. По умолчанию выключена и пустая. */
+/** Имя единственной пустой записи, которая создаётся при первом запуске. */
+export const TEMPLATE_NAME = 'Your Prompt';
+
+/**
+ * Настройки инжекта по умолчанию — как у Авторской заметки: берём её значения по умолчанию
+ * из настроек таверны (если пользователь их менял), иначе стандарт: в чате, глубина 4, system.
+ */
+export function authorsNoteDefaults() {
+    let note = {};
+    try { note = ctx().extensionSettings?.note ?? {}; } catch { /* нет контекста */ }
+    const pos = num(note.defaultPosition);
+    const role = num(note.defaultRole);
+    return {
+        position: Object.values(POS).includes(pos) ? pos : POS.IN_CHAT,
+        depth: clampInt(note.defaultDepth, 0, MAX_DEPTH, 4),
+        role: Object.values(ROLE).includes(role) ? role : ROLE.SYSTEM,
+    };
+}
+
+/** Новая запись. По умолчанию выключена, пустая, инжект — как у Авторской заметки. */
 export function newEntry(name, extra = {}) {
-    return normalizeEntry({ id: uid(), name, ...extra });
+    return normalizeEntry({ ...authorsNoteDefaults(), id: uid(), name, ...extra });
 }
 
 // null, '' и прочие пустые значения → значение по умолчанию (Number(null) === 0 — ловушка)
@@ -49,7 +68,7 @@ export function normalizeEntry(e) {
 }
 
 /** Настройки расширения. При первом запуске — одна пустая выключенная запись. */
-export function store(defaultName = 'New prompt') {
+export function store(defaultName = TEMPLATE_NAME) {
     const { extensionSettings } = ctx();
     const s = extensionSettings[MODULE] ??= {};
     if (!Array.isArray(s.entries)) s.entries = [];
@@ -135,11 +154,27 @@ export function syncInjections() {
     }
 }
 
+/** Имя файла чата без .jsonl. */
+export const stripJsonl = v => String(v ?? '').replace(/\.jsonl$/i, '');
+
+/**
+ * Очистка имени файла так же, как это делает сервер таверны (пакет sanitize-filename):
+ * в событие CHAT_RENAMED таверна кладёт имя до очистки.
+ */
+export function sanitizeChatFile(name) {
+    let s = String(name ?? '')
+        .replace(/[\/?<>\\:*|"]/g, '')
+        .replace(/[\x00-\x1f\x80-\x9f]/g, '')
+        .replace(/^\.+$/, '')
+        .replace(/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i, '')
+        .replace(/[. ]+$/, '');
+    return s;
+}
+
 /** Чат переименован: переносим привязки со старого имени файла на новое. */
 export function renameChatId(oldId, newId) {
-    const strip = v => String(v ?? '').replace(/\.jsonl$/i, '');
-    const from = strip(oldId);
-    const to = strip(newId);
+    const from = stripJsonl(oldId);
+    const to = stripJsonl(newId);
     if (!from || !to || from === to) return false;
     let changed = false;
     for (const e of entries()) {

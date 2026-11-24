@@ -69,17 +69,35 @@ function applyBaseColor() {
     else host.style.removeProperty('--plib-base');
 }
 
+/** Открыт ли поверх модальный попап таверны (тогда клавиши принадлежат ему). */
+function modalOnTop() {
+    try { return !!document.querySelector('dialog:modal'); } catch { return !!document.querySelector('dialog[open]'); }
+}
+
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]):not([type="file"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Tab не выпускает фокус за пределы окна (окно модальное). */
+function trapTab(e) {
+    const panel = $q('.plib-panel');
+    const items = [...panel.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const cur = document.activeElement;
+    if (!panel.contains(cur)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+    if (!e.shiftKey && cur === last) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && (cur === first || cur === panel)) { e.preventDefault(); last.focus(); }
+}
+
 function onKeyCapture(e) {
     if (!isOpen()) return;
-    if (document.querySelector('dialog[open]')) return;   // поверх открыт попап таверны — клавиши его
-    if (e.key === 'Escape') {
-        if (e.isComposing) return;                         // Escape отменяет набор IME, а не закрывает окно
-        e.preventDefault();
-        e.stopPropagation();
-        closePanel();
-        return;
-    }
-    e.stopPropagation();   // поведение по умолчанию (ввод текста, Tab) сохраняется
+    if (modalOnTop()) return;
+    // Дальше событие не уходит к горячим клавишам таверны (стрелки, Alt+Enter, Escape…).
+    // Действие по умолчанию (ввод текста, Tab, выбор в списке) не отменяется.
+    e.stopPropagation();
+    if (e.isComposing) return;   // Escape во время набора IME отменяет набор, а не закрывает окно
+    if (e.key === 'Escape') { e.preventDefault(); closePanel(); return; }
+    if (e.key === 'Tab') trapTab(e);
 }
 
 export function openPanel() {
@@ -96,7 +114,11 @@ export function closePanel() {
     if (!host) return;
     host.hidden = true;
     document.documentElement.classList.remove('plib-open');
-    if (lastFocus && document.contains(lastFocus)) { try { lastFocus.focus({ preventScroll: true }); } catch { /* ignore */ } }
+    // Обычно фокус был на пункте меню палочки, а меню к этому моменту уже скрыто —
+    // тогда возвращаем его на кнопку палочки (не в поле ввода: на телефоне выскочит клавиатура).
+    let back = lastFocus;
+    if (!back || !document.contains(back) || back.offsetParent === null) back = document.getElementById('extensionsMenuButton');
+    try { back?.focus({ preventScroll: true }); } catch { /* ignore */ }
     lastFocus = null;
 }
 
@@ -143,7 +165,7 @@ function cardHead(e, chatId) {
         <span class="plib-name">${esc(e.name.trim() || t('untitled'))}</span>
         <span class="plib-badges">${badges(e, chatId)}</span>
       </button>
-      <button type="button" class="plib-icon-btn plib-chev" data-act="toggle-open" title="${esc(t('editTitle'))}" aria-label="${esc(t('editTitle'))}" aria-expanded="${openId === e.id}"><i class="fa-solid fa-chevron-down"></i></button>`;
+      <button type="button" class="plib-icon-btn plib-chev" data-act="toggle-open" data-v="chev" title="${esc(t('editTitle'))}" aria-label="${esc(t('editTitle'))}" aria-expanded="${openId === e.id}"><i class="fa-solid fa-chevron-down"></i></button>`;
 }
 
 function editor(e, chatId) {
@@ -228,7 +250,13 @@ function renderSubtitle() {
 function focusKey() {
     const el = document.activeElement;
     if (!el || !host.contains(el)) return null;
-    return { id: idOf(el), act: el.dataset?.act, f: el.dataset?.f, v: el.dataset?.v };
+    const key = { id: idOf(el), act: el.dataset?.act, f: el.dataset?.f, v: el.dataset?.v };
+    if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text')) {
+        key.sel = [el.selectionStart, el.selectionEnd, el.selectionDirection];
+        key.scroll = el.scrollTop;
+        key.height = el.style.height;
+    }
+    return key;
 }
 
 function restoreFocus(key) {
@@ -240,6 +268,17 @@ function restoreFocus(key) {
         if (scope && sel) el = scope.querySelector(sel);
     }
     (el || $q('.plib-panel'))?.focus({ preventScroll: true });
+    if (el && key?.sel) {   // курсор, прокрутка и высота поля как были
+        try { el.setSelectionRange(...key.sel); } catch { /* ignore */ }
+        if (key.height) el.style.height = key.height;
+        el.scrollTop = key.scroll;
+    }
+}
+
+/** Поставить фокус на элемент внутри карточки после действия, которое её пересоздало. */
+function focusIn(id, sel) {
+    const el = id ? cardEl(id)?.querySelector(sel) : null;
+    if (el) el.focus({ preventScroll: false });
 }
 
 function render() {
@@ -346,6 +385,7 @@ async function onClick(ev) {
             if (e.scope === 'only') e.onlyChats = []; else e.excludeChats = [];
             save();
             render();
+            focusIn(id, '[data-f="thisChat"]');
             break;
         case 'duplicate': {
             if (!e) break;
@@ -358,6 +398,7 @@ async function onClick(ev) {
             openId = copy.id;
             save();
             render();
+            focusIn(copy.id, '[data-f="name"]');
             break;
         }
         case 'delete': {
@@ -370,6 +411,8 @@ async function onClick(ev) {
             if (openId === id) openId = null;
             save();
             render();
+            const near = list[i] ?? list[i - 1];   // фокус — на соседнюю запись
+            if (near) focusIn(near.id, '.plib-title-btn');
             break;
         }
         case 'export': doExport(); break;

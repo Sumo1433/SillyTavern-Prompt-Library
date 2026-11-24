@@ -2,7 +2,7 @@
 // Каждая запись: имя, текст, тип инжекта, глубина, роль, тумблер. Работает поверх штатного
 // механизма extension prompts (как Author's Note), поэтому не зависит от пресета, API и модели.
 import { t } from './src/i18n.js';
-import { ctx, renameChatId, store, syncInjections } from './src/state.js';
+import { currentChatId, ctx, renameChatId, sanitizeChatFile, store, stripJsonl, syncInjections } from './src/state.js';
 import { buildPanel, openPanel, refresh } from './src/ui.js';
 
 function addMenuItem() {
@@ -17,23 +17,30 @@ function addMenuItem() {
     // Клик не останавливаем: штатный обработчик таверны сам закроет меню палочки.
     // Enter обрабатывает таверна (.interactable превращает его в click).
     it.addEventListener('click', () => openPanel());
+    it.addEventListener('keydown', e => { if (e.key === ' ') { e.preventDefault(); it.click(); } });
     menu.append(it);
 }
 
 function init() {
-    store(t('newName'));
+    store();
     buildPanel();
     addMenuItem();
     syncInjections();
 
     const { eventSource, eventTypes } = ctx();
     const resync = () => { syncInjections(); refresh(); };
-    eventSource.on(eventTypes.CHAT_CHANGED, resync);
+    let lastChatId = currentChatId();
+    eventSource.on(eventTypes.CHAT_CHANGED, () => { lastChatId = currentChatId(); resync(); });
     eventSource.on(eventTypes.APP_READY, () => { addMenuItem(); syncInjections(); });
     // Переименование чата меняет его id — переносим исключения и «только в выбранных».
     if (eventTypes.CHAT_RENAMED) {
         eventSource.on(eventTypes.CHAT_RENAMED, data => {
-            if (renameChatId(data?.oldFileName, data?.newFileName)) ctx().saveSettingsDebounced();
+            const from = stripJsonl(data?.oldFileName);
+            // Таверна кладёт в событие имя до очистки сервером. Если переименован открытый чат,
+            // он уже перезагружен — берём настоящий id; иначе повторяем серверную очистку.
+            const to = from && from === lastChatId && currentChatId() ? currentChatId() : stripJsonl(sanitizeChatFile(data?.newFileName));
+            if (renameChatId(from, to)) ctx().saveSettingsDebounced();
+            lastChatId = currentChatId();
             resync();
         });
     }

@@ -37,6 +37,23 @@ test('первый запуск: одна пустая выключенная з
     assert.deepEqual(Object.keys(injected), []);
 });
 
+test('шаблон по умолчанию называется Your Prompt, инжект как у Авторской заметки', () => {
+    const s = S.store();
+    assert.equal(s.entries[0].name, 'Your Prompt');
+    assert.equal(s.entries[0].position, S.POS.IN_CHAT);
+    assert.equal(s.entries[0].depth, 4);
+    assert.equal(s.entries[0].role, S.ROLE.SYSTEM);
+});
+
+test('новые записи берут умолчания Авторской заметки из настроек таверны', () => {
+    settings.note = { defaultPosition: 2, defaultDepth: 6, defaultRole: 1 };
+    const e = S.newEntry('x');
+    assert.deepEqual([e.position, e.depth, e.role, e.enabled, e.text], [2, 6, 1, false, '']);
+    settings.note = { defaultPosition: '', defaultDepth: null };
+    const d = S.newEntry('y');
+    assert.deepEqual([d.position, d.depth, d.role], [1, 4, 0]);
+});
+
 test('после удаления всех записей шаблон не возвращается', () => {
     const s = S.store('x');
     s.entries.length = 0;
@@ -114,6 +131,13 @@ test('переименование чата переносит привязки'
     e.excludeChats = ['a', 'b'];
     S.renameChatId('a', 'b');
     assert.deepEqual(e.excludeChats, ['b']);
+});
+
+test('имя файла чата очищается как на сервере таверны', () => {
+    const f = n => S.stripJsonl(S.sanitizeChatFile(n));
+    assert.equal(f('Глава 2: бал.jsonl'), 'Глава 2 бал');
+    assert.equal(f('a/b?c*d|e"f<g>h.jsonl'), 'abcdefgh');
+    assert.equal(f('ok.jsonl'), 'ok');
 });
 
 test('импорт: пустые значения → значения по умолчанию', () => {
