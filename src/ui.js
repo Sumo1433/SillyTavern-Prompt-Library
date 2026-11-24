@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import {
     MAX_DEPTH, POS, ROLE, chatToggleState, ctx, currentChatId, entries, exportData, isActive,
-    isOnForChat, newEntry, parseImport, save, setChatToggle,
+    isOnForChat, newEntry, parseImport, persistChatKey, save, setChatToggle,
 } from './state.js';
 
 const esc = s => String(s ?? '')
@@ -44,7 +44,7 @@ export function buildPanel() {
             <i class="fa-solid fa-magnifying-glass"></i>
             <input type="search" id="plib_search" placeholder="${esc(t('search'))}" autocomplete="off">
           </label>
-          <button type="button" class="plib-add" data-act="add"><i class="fa-solid fa-plus"></i><span>${esc(t('add'))}</span></button>
+          <button type="button" class="plib-add" data-act="add" aria-label="${esc(t('add'))}" title="${esc(t('add'))}"><i class="fa-solid fa-plus"></i><span>${esc(t('add'))}</span></button>
         </div>
         <div class="plib-list" id="plib_list"></div>
         <footer class="plib-foot">${esc(t('footer'))}</footer>
@@ -243,7 +243,7 @@ function renderSubtitle() {
     const active = list.filter(e => isActive(e, chatId)).length;
     const sub = $q('#plib_sub');
     sub.textContent = `${t('subtitle', active, list.length)} · ${chatId ? `${t('chat')}: ${chatLabel() || chatId}` : t('noChat')}`;
-    sub.title = chatId;
+    try { sub.title = ctx().getCurrentChatId?.() || ''; } catch { sub.title = ''; }
 }
 
 /** Описание элемента с фокусом, чтобы найти его же после перерисовки. */
@@ -372,7 +372,7 @@ async function onClick(ev) {
         case 'toggle-open':
             openId = openId === id ? null : id;
             render();
-            if (openId) cardEl(openId)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            if (openId) cardEl(openId)?.scrollIntoView({ block: 'nearest', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
             break;
         case 'scope':
             if (!e) break;
@@ -463,7 +463,7 @@ function onChange(ev) {
         case 'enabled': e.enabled = el.checked; break;
         case 'position': e.position = Number(el.value); break;
         case 'role': e.role = Number(el.value); break;
-        case 'thisChat': setChatToggle(e, currentChatId(), el.checked); break;
+        case 'thisChat': setChatToggle(e, currentChatId(), el.checked); persistChatKey(); break;
         case 'depth': el.value = String(e.depth); return;   // после ухода с поля показать сохранённое значение
         default: return;
     }

@@ -56,7 +56,7 @@ To exclude the current chat, turn off **Active in this chat** in the entry edito
 
 To use an entry in just a few chats, select **Only selected chats**. Open each chat you want to include and turn on **Active in this chat**.
 
-Card badges show chat-specific status. Chat assignments are preserved when a chat is renamed, and a new branch or checkpoint inherits the settings of the chat it was created from the first time you open it.
+Card badges show chat-specific status. Per-chat settings are tied to SillyTavern’s internal chat ID, not the file name: they survive renaming, and same-named chats of different characters stay independent. A new branch inherits the settings of the chat it was created from; after that, it keeps its own.
 
 ## Screenshots
 

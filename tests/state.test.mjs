@@ -11,6 +11,7 @@ globalThis.SillyTavern = {
         extensionPrompts: injected,
         saveSettingsDebounced: () => {},
         getCurrentChatId: () => chatId,
+        chatMetadata: { integrity: chatId },
         getCurrentLocale: () => 'ru-ru',
         setExtensionPrompt: (key, value, position, depth, scan, role) => {
             injected[key] = { value, position, depth, scan, role };
@@ -120,19 +121,6 @@ test('для «перед/после промта» роль всегда system
     assert.equal(Object.values(injected)[0].role, S.ROLE.SYSTEM);
 });
 
-test('переименование чата переносит привязки', () => {
-    const s = S.store('x');
-    const e = s.entries[0];
-    Object.assign(e, { excludeChats: ['old', 'keep'], onlyChats: ['old'] });
-    assert.equal(S.renameChatId('old.jsonl', 'new.jsonl'), true);
-    assert.deepEqual(e.excludeChats, ['new', 'keep']);
-    assert.deepEqual(e.onlyChats, ['new']);
-    assert.equal(S.renameChatId('nope', 'x'), false);
-    e.excludeChats = ['a', 'b'];
-    S.renameChatId('a', 'b');
-    assert.deepEqual(e.excludeChats, ['b']);
-});
-
 test('ветка наследует привязки родительского чата', () => {
     const s = S.store('x');
     s.entries = [
@@ -159,11 +147,29 @@ test('наследование выполняется один раз на ве�
     assert.deepEqual(s.branchesDone, ['main - Branch #1']);
 });
 
-test('имя файла чата очищается как на сервере таверны', () => {
-    const f = n => S.stripJsonl(S.sanitizeChatFile(n));
-    assert.equal(f('Глава 2: бал.jsonl'), 'Глава 2 бал');
-    assert.equal(f('a/b?c*d|e"f<g>h.jsonl'), 'abcdefgh');
-    assert.equal(f('ok.jsonl'), 'ok');
+test('отметки веток не обрезаются: старая ветка не наследует повторно после 1000 других', () => {
+    const s = S.store('x');
+    s.entries = [S.newEntry('a', { excludeChats: ['parent'] })];
+    S.inheritOnce('parent', 'old-branch');
+    S.setChatToggle(s.entries[0], 'old-branch', true);   // включили промт в ветке
+    for (let i = 0; i < 1500; i++) S.inheritOnce('parent', 'branch-' + i);
+    assert.equal(S.inheritOnce('parent', 'old-branch'), false);
+    assert.equal(s.entries[0].excludeChats.includes('old-branch'), false);
+});
+
+test('ключ чата — integrity из метаданных, без чата — пусто', () => {
+    assert.equal(S.currentChatId(), 'chat-1');
+    chatId = '';
+    assert.equal(S.currentChatId(), '');
+});
+
+test('перенос старой привязки по имени файла на ключ чата', () => {
+    const s = S.store('x');
+    s.entries = [S.newEntry('a', { excludeChats: ['Scene 1'] }), S.newEntry('b', { scope: 'only', onlyChats: ['Scene 1', 'uuid-1'] })];
+    assert.equal(S.migrateLegacyChat('Scene 1', 'uuid-1'), true);
+    assert.deepEqual(s.entries[0].excludeChats, ['uuid-1']);
+    assert.deepEqual(s.entries[1].onlyChats, ['uuid-1']);
+    assert.equal(S.migrateLegacyChat('Scene 1', 'uuid-2'), false);   // имя уже забрано первым чатом
 });
 
 test('импорт: пустые значения → значения по умолчанию', () => {

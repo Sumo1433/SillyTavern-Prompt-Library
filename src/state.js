@@ -90,11 +90,63 @@ export function entries() {
     return ctx().extensionSettings[MODULE]?.entries ?? [];
 }
 
-export function currentChatId() {
+/** Имя файла открытого чата (без .jsonl) или '' — нужно только для веток и переноса старых привязок. */
+export function currentChatFile() {
     try {
         const id = ctx().getCurrentChatId?.();
         return id ? String(id) : '';
     } catch { return ''; }
+}
+
+/**
+ * Ключ открытого чата для привязок — постоянный UUID таверны `chat_metadata.integrity`.
+ * Он уникален даже у одноимённых чатов разных персонажей, не меняется при переименовании,
+ * а новая ветка или чекпоинт получает свой. Таверна ставит его при загрузке чата; если его
+ * почему-то нет, создаём сами (сохранится вместе с чатом, см. persistChatKey).
+ */
+export function currentChatId() {
+    try {
+        const c = ctx();
+        if (!c.getCurrentChatId?.()) return '';
+        const meta = c.chatMetadata;
+        if (!meta || typeof meta !== 'object') return '';
+        if (!meta.integrity) meta.integrity = globalThis.crypto?.randomUUID?.() ?? `plib-${uid()}`;
+        return String(meta.integrity);
+    } catch { return ''; }
+}
+
+/** Сохранить метаданные чата, чтобы ключ (integrity) точно лёг в файл чата. */
+export function persistChatKey() {
+    try { ctx().saveMetadataDebounced?.(); } catch { /* ignore */ }
+}
+
+/** Владелец открытого чата: персонаж (по файлу аватара) или группа. */
+export function currentChatOwner() {
+    try {
+        const c = ctx();
+        if (c.groupId) return `g:${c.groupId}`;
+        const ch = c.characters?.[c.characterId];
+        return ch ? `c:${ch.avatar ?? c.characterId}` : '';
+    } catch { return ''; }
+}
+
+/**
+ * Перенос старых привязок (до 0.1.0 они хранились по имени файла чата) на ключ чата.
+ * Имя файла неоднозначно (одноимённые чаты разных персонажей), поэтому привязку забирает
+ * первый открытый чат с таким именем, а имя из списка удаляется.
+ */
+export function migrateLegacyChat(file, key) {
+    if (!file || !key || file === key) return false;
+    let changed = false;
+    for (const e of entries()) {
+        for (const list of [e.excludeChats, e.onlyChats]) {
+            const i = list.indexOf(file);
+            if (i < 0) continue;
+            if (list.includes(key)) list.splice(i, 1); else list[i] = key;
+            changed = true;
+        }
+    }
+    return changed;
 }
 
 /** Включена ли запись для указанного чата (без учёта текста). */
@@ -158,74 +210,34 @@ export function syncInjections() {
 export const stripJsonl = v => String(v ?? '').replace(/\.jsonl$/i, '');
 
 /**
- * Очистка имени файла так же, как это делает сервер таверны (пакет sanitize-filename):
- * в событие CHAT_RENAMED таверна кладёт имя до очистки.
- */
-export function sanitizeChatFile(name) {
-    let s = String(name ?? '')
-        .replace(/[\/?<>\\:*|"]/g, '')
-        .replace(/[\x00-\x1f\x80-\x9f]/g, '')
-        .replace(/^\.+$/, '')
-        .replace(/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i, '')
-        .replace(/[. ]+$/, '');
-    return s;
-}
-
-/**
  * Ветка (или чекпоинт) чата наследует настройки родителя: если промт выключен в родительском
- * чате или включён там в режиме «только выбранные», так же будет и в ветке. Вызывается один раз
- * при первом открытии ветки; дальше ветка живёт своими настройками.
+ * чате или включён там в режиме «только выбранные», так же будет и в ветке.
  */
-export function inheritChatSettings(parentId, childId) {
-    const from = stripJsonl(parentId);
-    const to = stripJsonl(childId);
-    if (!from || !to || from === to) return false;
+export function inheritChatSettings(parentKey, childKey) {
+    if (!parentKey || !childKey || parentKey === childKey) return false;
     let changed = false;
     for (const e of entries()) {
         for (const list of [e.excludeChats, e.onlyChats]) {
-            if (list.includes(from) && !list.includes(to)) { list.push(to); changed = true; }
+            if (list.includes(parentKey) && !list.includes(childKey)) { list.push(childKey); changed = true; }
         }
     }
     return changed;
 }
-
-const BRANCHES_KEEP = 1000;
 
 /**
- * Один раз на ветку: унаследовать привязки родителя. Отметка «ветка обработана» хранится
- * рядом с записями (в тех же настройках), поэтому сохраняется вместе с ними — без рассинхрона.
+ * Один раз на ветку: отметить её как обработанную и, если известен родитель, унаследовать
+ * его привязки. Отметки хранятся по ключу чата (он не меняется при переименовании) и никогда
+ * не удаляются — иначе старая ветка могла бы унаследовать повторно и затереть свои настройки.
+ * Возвращает true, если ветка встречена впервые (настройки изменились — нужно сохранить).
  */
-export function inheritOnce(parentId, childId) {
+export function inheritOnce(parentKey, childKey) {
     const s = ctx().extensionSettings[MODULE];
-    const to = stripJsonl(childId);
-    if (!s || !to) return false;
+    if (!s || !childKey) return false;
     if (!Array.isArray(s.branchesDone)) s.branchesDone = [];
-    if (s.branchesDone.includes(to)) return false;
-    s.branchesDone.push(to);
-    if (s.branchesDone.length > BRANCHES_KEEP) s.branchesDone.splice(0, s.branchesDone.length - BRANCHES_KEEP);
-    inheritChatSettings(parentId, to);
-    return true;   // настройки изменились (как минимум отметка) — нужно сохранить
-}
-
-/** Чат переименован: переносим привязки со старого имени файла на новое. */
-export function renameChatId(oldId, newId) {
-    const from = stripJsonl(oldId);
-    const to = stripJsonl(newId);
-    if (!from || !to || from === to) return false;
-    let changed = false;
-    for (const e of entries()) {
-        for (const list of [e.excludeChats, e.onlyChats]) {
-            const i = list.indexOf(from);
-            if (i < 0) continue;
-            if (list.includes(to)) list.splice(i, 1); else list[i] = to;
-            changed = true;
-        }
-    }
-    // отметка «ветка уже унаследовала» тоже переезжает, иначе переименованная ветка унаследует повторно
-    const done = ctx().extensionSettings[MODULE]?.branchesDone;
-    const j = Array.isArray(done) ? done.indexOf(from) : -1;
-    if (j >= 0) { done[j] = to; changed = true; }
-    return changed;
+    if (s.branchesDone.includes(childKey)) return false;
+    s.branchesDone.push(childKey);
+    if (parentKey) inheritChatSettings(parentKey, childKey);
+    return true;
 }
 
 export function save() {
