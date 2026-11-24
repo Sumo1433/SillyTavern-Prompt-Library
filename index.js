@@ -2,7 +2,7 @@
 // Каждая запись: имя, текст, тип инжекта, глубина, роль, тумблер. Работает поверх штатного
 // механизма extension prompts (как Author's Note), поэтому не зависит от пресета, API и модели.
 import { t } from './src/i18n.js';
-import { currentChatFile, currentChatId, currentChatOwner, ctx, inheritOnce, migrateLegacyChat, persistChatKey, store, stripJsonl, syncInjections } from './src/state.js';
+import { currentChatFile, currentChatId, currentChatOwner, ctx, findChatKey, hasBindings, inheritOnce, migrateLegacyChat, persistChatKey, rememberChat, store, stripJsonl, syncInjections } from './src/state.js';
 import { buildPanel, openPanel, refresh } from './src/ui.js';
 
 function addMenuItem() {
@@ -21,14 +21,12 @@ function addMenuItem() {
     menu.append(it);
 }
 
-/** Чат, открытый перед текущим: по нему узнаём родителя только что созданной ветки. */
-let prevChat = { key: '', file: '', owner: '' };
-
 /**
- * При смене чата: перенос старых привязок по имени файла и наследование для новой ветки.
- * Ветка/чекпоинт: таверна пишет в метаданные main_chat — имя родительского чата. Ветка
- * открывается сразу из родителя, поэтому родитель — это предыдущий чат того же персонажа
- * с этим именем. Наследование — один раз на ветку (inheritOnce).
+ * При смене чата: перенос старых привязок по имени файла, запись в справочник чатов и
+ * наследование для ветки/чекпоинта. Таверна пишет в метаданные ветки main_chat — имя
+ * родительского чата; родителя ищем по справочнику (тот же персонаж/группа) или по старой
+ * привязке по имени. Если родитель неизвестен, ветка не отмечается и унаследует позже —
+ * если пользователь к тому времени сам не настроит её (freezeChat).
  */
 function onChatChanged() {
     const c = ctx();
@@ -38,16 +36,16 @@ function onChatChanged() {
     let dirty = false;
     try {
         if (key && file && migrateLegacyChat(file, key)) dirty = true;
+        if (key && file && rememberChat(owner, file, key)) dirty = true;
         const parentFile = stripJsonl(c.chatMetadata?.main_chat);
         if (key && parentFile && parentFile !== file) {
-            const parentKey = prevChat.key && prevChat.file === parentFile && prevChat.owner === owner ? prevChat.key : '';
-            if (inheritOnce(parentKey, key)) dirty = true;
+            const parentKey = findChatKey(owner, parentFile) || (hasBindings(parentFile) ? parentFile : '');
+            if (parentKey && parentKey !== key && inheritOnce(parentKey, key)) dirty = true;
         }
     } catch (e) {
         console.warn('[Prompt Library] chat bookkeeping skipped', e);
     }
     if (dirty) { c.saveSettingsDebounced(); persistChatKey(); }
-    prevChat = { key, file, owner };
 }
 
 function init() {
@@ -58,7 +56,6 @@ function init() {
 
     const { eventSource, eventTypes } = ctx();
     const resync = () => { syncInjections(); refresh(); };
-    prevChat = { key: currentChatId(), file: currentChatFile(), owner: currentChatOwner() };
     eventSource.on(eventTypes.CHAT_CHANGED, () => { onChatChanged(); resync(); });
     eventSource.on(eventTypes.APP_READY, () => { addMenuItem(); syncInjections(); });
     // Переименование не трогаем: ключ чата (integrity) при нём не меняется.

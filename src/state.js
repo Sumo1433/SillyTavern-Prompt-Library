@@ -138,15 +138,50 @@ export function currentChatOwner() {
 export function migrateLegacyChat(file, key) {
     if (!file || !key || file === key) return false;
     let changed = false;
-    for (const e of entries()) {
-        for (const list of [e.excludeChats, e.onlyChats]) {
-            const i = list.indexOf(file);
-            if (i < 0) continue;
-            if (list.includes(key)) list.splice(i, 1); else list[i] = key;
-            changed = true;
-        }
-    }
+    const swap = list => {
+        const i = list.indexOf(file);
+        if (i < 0) return;
+        if (list.includes(key)) list.splice(i, 1); else list[i] = key;
+        changed = true;
+    };
+    for (const e of entries()) { swap(e.excludeChats); swap(e.onlyChats); }
+    // отметка «ветка уже унаследовала» тоже по старому имени — переносим, иначе ветка унаследует повторно
+    const done = ctx().extensionSettings[MODULE]?.branchesDone;
+    if (Array.isArray(done)) swap(done);
     return changed;
+}
+
+/**
+ * Справочник «владелец + имя файла чата → ключ чата». Нужен, чтобы найти родителя ветки
+ * или чекпоинта по main_chat, даже если ветку открыли не сразу из родителя. Старые записи
+ * (после переименования) не удаляем: main_chat у веток хранит имя родителя на момент создания.
+ */
+export function rememberChat(owner, file, key) {
+    const s = ctx().extensionSettings[MODULE];
+    if (!s || !owner || !file || !key) return false;
+    if (!s.chatIndex || typeof s.chatIndex !== 'object' || Array.isArray(s.chatIndex)) s.chatIndex = {};
+    const k = `${owner}|${file}`;
+    if (s.chatIndex[k] === key) return false;
+    s.chatIndex[k] = key;
+    return true;
+}
+
+export function findChatKey(owner, file) {
+    const idx = ctx().extensionSettings[MODULE]?.chatIndex;
+    return (idx && owner && file && idx[`${owner}|${file}`]) || '';
+}
+
+/** Есть ли у ключа (или старого имени) хоть одна привязка в библиотеке. */
+export function hasBindings(id) {
+    return !!id && entries().some(e => e.excludeChats.includes(id) || e.onlyChats.includes(id));
+}
+
+/** Пользователь сам настроил этот чат — наследование от родителя для него больше не применяется. */
+export function freezeChat(chatId) {
+    const s = ctx().extensionSettings[MODULE];
+    if (!s || !chatId) return;
+    if (!Array.isArray(s.branchesDone)) s.branchesDone = [];
+    if (!s.branchesDone.includes(chatId)) s.branchesDone.push(chatId);
 }
 
 /** Включена ли запись для указанного чата (без учёта текста). */
@@ -164,6 +199,7 @@ export function isActive(e, chatId = currentChatId()) {
 /** Переключатель «в этом чате» внутри редактора. */
 export function setChatToggle(e, chatId, on) {
     if (!chatId) return;
+    freezeChat(chatId);   // явный выбор пользователя наследование не перезапишет
     const list = e.scope === 'only' ? e.onlyChats : e.excludeChats;
     const want = e.scope === 'only' ? on : !on;   // в режиме «все» список — исключения
     const has = list.includes(chatId);
@@ -232,11 +268,11 @@ export function inheritChatSettings(parentKey, childKey) {
  */
 export function inheritOnce(parentKey, childKey) {
     const s = ctx().extensionSettings[MODULE];
-    if (!s || !childKey) return false;
+    if (!s || !childKey || !parentKey) return false;   // родитель неизвестен — не отмечаем, попробуем позже
     if (!Array.isArray(s.branchesDone)) s.branchesDone = [];
     if (s.branchesDone.includes(childKey)) return false;
     s.branchesDone.push(childKey);
-    if (parentKey) inheritChatSettings(parentKey, childKey);
+    inheritChatSettings(parentKey, childKey);
     return true;
 }
 

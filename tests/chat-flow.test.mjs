@@ -103,16 +103,55 @@ test('переименование обычного чата сохраняет 
     assert.equal(S.isActive(entry()), false);
 });
 
-test('ветка, открытая не из родителя, не наследует, но и не наследует потом', () => {
+test('ветка или чекпоинт, открытые позже из другого чата, тоже наследуют', () => {
     reset();
     open({ file: 'Story', integrity: 'p-uuid' });
     S.setChatToggle(entry(), S.currentChatId(), false);
     open({ file: 'Other', integrity: 'o-uuid' });
-    open({ file: 'Story - Branch #2', integrity: 'b2-uuid', main_chat: 'Story' });
-    assert.equal(S.isActive(entry()), true);
+    open({ file: 'Checkpoint', integrity: 'cp-uuid', main_chat: 'Story' });
+    assert.equal(S.isActive(entry()), false);
+    S.setChatToggle(entry(), S.currentChatId(), true);   // включили в чекпоинте
     open({ file: 'Story', integrity: 'p-uuid' });
-    open({ file: 'Story - Branch #2', integrity: 'b2-uuid', main_chat: 'Story' });
+    open({ file: 'Checkpoint', integrity: 'cp-uuid', main_chat: 'Story' });
     assert.equal(S.isActive(entry()), true);
+});
+
+test('родитель неизвестен: ветка не отмечается и наследует, когда он станет известен', () => {
+    reset();
+    entry().excludeChats = ['p2-uuid'];   // привязка есть, но родитель ещё не открывался (нет в справочнике)
+    open({ file: 'Branch', integrity: 'b3-uuid', main_chat: 'Story 2' });
+    assert.equal(S.isActive(entry()), true);
+    assert.equal(settings.promptLibrary.branchesDone.includes('b3-uuid'), false);
+    open({ file: 'Story 2', integrity: 'p2-uuid' });
+    open({ file: 'Branch', integrity: 'b3-uuid', main_chat: 'Story 2' });
+    assert.equal(S.isActive(entry()), false);
+});
+
+test('родитель неизвестен, но пользователь сам настроил ветку — наследование её не трогает', () => {
+    reset();
+    entry().excludeChats = ['p4-uuid'];
+    open({ file: 'Branch 4', integrity: 'b4-uuid', main_chat: 'Story 4' });
+    S.setChatToggle(entry(), S.currentChatId(), true);   // явный выбор (ничего не меняет в списках, но фиксирует)
+    open({ file: 'Story 4', integrity: 'p4-uuid' });
+    open({ file: 'Branch 4', integrity: 'b4-uuid', main_chat: 'Story 4' });
+    assert.equal(S.isActive(entry()), true);
+});
+
+test('обновление: настроенная старая ветка (отметка по имени) не наследует повторно', () => {
+    reset();
+    entry().excludeChats = ['Old story'];
+    settings.promptLibrary.branchesDone = ['Old story - Branch #1'];
+    open({ file: 'Old story', integrity: 'os-uuid' });
+    open({ file: 'Old story - Branch #1', integrity: 'osb-uuid', main_chat: 'Old story' });
+    assert.equal(S.isActive(entry()), true);
+    assert.ok(settings.promptLibrary.branchesDone.includes('osb-uuid'));
+});
+
+test('обновление: ветка со старой привязкой родителя по имени наследует', () => {
+    reset();
+    entry().excludeChats = ['Legacy story'];
+    open({ file: 'Legacy story - Branch #1', integrity: 'lsb-uuid', main_chat: 'Legacy story' });
+    assert.equal(S.isActive(entry()), false);
 });
 
 test('ветка чужого персонажа с тем же именем родителя не наследует', () => {
