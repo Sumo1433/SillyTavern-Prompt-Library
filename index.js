@@ -2,7 +2,7 @@
 // Каждая запись: имя, текст, тип инжекта, глубина, роль, тумблер. Работает поверх штатного
 // механизма extension prompts (как Author's Note), поэтому не зависит от пресета, API и модели.
 import { t } from './src/i18n.js';
-import { currentChatId, ctx, renameChatId, sanitizeChatFile, store, stripJsonl, syncInjections } from './src/state.js';
+import { currentChatId, ctx, inheritOnce, renameChatId, sanitizeChatFile, store, stripJsonl, syncInjections } from './src/state.js';
 import { buildPanel, openPanel, refresh } from './src/ui.js';
 
 function addMenuItem() {
@@ -21,6 +21,22 @@ function addMenuItem() {
     menu.append(it);
 }
 
+/**
+ * Ветка/чекпоинт: таверна пишет в метаданные main_chat — имя родительского чата.
+ * При первом открытии ветки копируем привязки родителя (один раз, см. inheritOnce).
+ */
+function inheritFromParentChat() {
+    try {
+        const c = ctx();
+        const parent = c.chatMetadata?.main_chat;
+        const cur = currentChatId();
+        if (!cur || !parent || stripJsonl(parent) === cur) return;
+        if (inheritOnce(parent, cur)) c.saveSettingsDebounced();
+    } catch (e) {
+        console.warn('[Prompt Library] branch inheritance skipped', e);
+    }
+}
+
 function init() {
     store();
     buildPanel();
@@ -30,7 +46,11 @@ function init() {
     const { eventSource, eventTypes } = ctx();
     const resync = () => { syncInjections(); refresh(); };
     let lastChatId = currentChatId();
-    eventSource.on(eventTypes.CHAT_CHANGED, () => { lastChatId = currentChatId(); resync(); });
+    eventSource.on(eventTypes.CHAT_CHANGED, () => {
+        lastChatId = currentChatId();
+        inheritFromParentChat();
+        resync();
+    });
     eventSource.on(eventTypes.APP_READY, () => { addMenuItem(); syncInjections(); });
     // Переименование чата меняет его id — переносим исключения и «только в выбранных».
     if (eventTypes.CHAT_RENAMED) {

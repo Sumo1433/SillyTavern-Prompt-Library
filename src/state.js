@@ -171,6 +171,42 @@ export function sanitizeChatFile(name) {
     return s;
 }
 
+/**
+ * Ветка (или чекпоинт) чата наследует настройки родителя: если промт выключен в родительском
+ * чате или включён там в режиме «только выбранные», так же будет и в ветке. Вызывается один раз
+ * при первом открытии ветки; дальше ветка живёт своими настройками.
+ */
+export function inheritChatSettings(parentId, childId) {
+    const from = stripJsonl(parentId);
+    const to = stripJsonl(childId);
+    if (!from || !to || from === to) return false;
+    let changed = false;
+    for (const e of entries()) {
+        for (const list of [e.excludeChats, e.onlyChats]) {
+            if (list.includes(from) && !list.includes(to)) { list.push(to); changed = true; }
+        }
+    }
+    return changed;
+}
+
+const BRANCHES_KEEP = 1000;
+
+/**
+ * Один раз на ветку: унаследовать привязки родителя. Отметка «ветка обработана» хранится
+ * рядом с записями (в тех же настройках), поэтому сохраняется вместе с ними — без рассинхрона.
+ */
+export function inheritOnce(parentId, childId) {
+    const s = ctx().extensionSettings[MODULE];
+    const to = stripJsonl(childId);
+    if (!s || !to) return false;
+    if (!Array.isArray(s.branchesDone)) s.branchesDone = [];
+    if (s.branchesDone.includes(to)) return false;
+    s.branchesDone.push(to);
+    if (s.branchesDone.length > BRANCHES_KEEP) s.branchesDone.splice(0, s.branchesDone.length - BRANCHES_KEEP);
+    inheritChatSettings(parentId, to);
+    return true;   // настройки изменились (как минимум отметка) — нужно сохранить
+}
+
 /** Чат переименован: переносим привязки со старого имени файла на новое. */
 export function renameChatId(oldId, newId) {
     const from = stripJsonl(oldId);
@@ -185,6 +221,10 @@ export function renameChatId(oldId, newId) {
             changed = true;
         }
     }
+    // отметка «ветка уже унаследовала» тоже переезжает, иначе переименованная ветка унаследует повторно
+    const done = ctx().extensionSettings[MODULE]?.branchesDone;
+    const j = Array.isArray(done) ? done.indexOf(from) : -1;
+    if (j >= 0) { done[j] = to; changed = true; }
     return changed;
 }
 

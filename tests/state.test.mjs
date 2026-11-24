@@ -133,6 +133,32 @@ test('переименование чата переносит привязки'
     assert.deepEqual(e.excludeChats, ['b']);
 });
 
+test('ветка наследует привязки родительского чата', () => {
+    const s = S.store('x');
+    s.entries = [
+        S.newEntry('a', { excludeChats: ['main'] }),
+        S.newEntry('b', { scope: 'only', onlyChats: ['main', 'other'] }),
+        S.newEntry('c', {}),
+    ];
+    assert.equal(S.inheritChatSettings('main', 'main - Branch #1'), true);
+    assert.deepEqual(s.entries[0].excludeChats, ['main', 'main - Branch #1']);
+    assert.deepEqual(s.entries[1].onlyChats, ['main', 'other', 'main - Branch #1']);
+    assert.deepEqual(s.entries[2].excludeChats, []);
+    assert.equal(S.inheritChatSettings('main', 'main - Branch #1'), false);   // повторно ничего не меняет
+    assert.equal(S.inheritChatSettings('', 'x'), false);
+});
+
+test('наследование выполняется один раз на ветку', () => {
+    const s = S.store('x');
+    s.entries = [S.newEntry('a', { excludeChats: ['main'] })];
+    assert.equal(S.inheritOnce('main', 'main - Branch #1'), true);
+    assert.deepEqual(s.entries[0].excludeChats, ['main', 'main - Branch #1']);
+    s.entries[0].excludeChats = ['main'];   // пользователь включил промт в ветке
+    assert.equal(S.inheritOnce('main', 'main - Branch #1'), false);
+    assert.deepEqual(s.entries[0].excludeChats, ['main']);
+    assert.deepEqual(s.branchesDone, ['main - Branch #1']);
+});
+
 test('имя файла чата очищается как на сервере таверны', () => {
     const f = n => S.stripJsonl(S.sanitizeChatFile(n));
     assert.equal(f('Глава 2: бал.jsonl'), 'Глава 2 бал');
