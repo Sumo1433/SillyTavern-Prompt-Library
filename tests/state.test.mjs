@@ -74,12 +74,54 @@ test('выключение убирает инжект, чужие ключи н
     assert.deepEqual(Object.keys(injected), ['other_ext']);
 });
 
-test('порядок ключей совпадает с порядком библиотеки', () => {
+test('записи одной позиции склеиваются в порядке библиотеки', () => {
     const s = S.store('x');
-    s.entries = ['B', 'A', 'C'].map(t => S.newEntry(t, { enabled: true, text: t }));
+    s.entries = ['B', 'A', 'C'].map(t => S.newEntry(t, { enabled: true, text: t, position: S.POS.BEFORE_PROMPT }));
     S.syncInjections();
-    const order = Object.keys(injected).sort().map(k => injected[k].value);
-    assert.deepEqual(order, ['B', 'A', 'C']);
+    const vals = Object.values(injected);
+    assert.equal(vals.length, 1);
+    assert.equal(vals[0].value, 'B\n\nA\n\nC');
+});
+
+test('разные глубины и роли — разные инжекты', () => {
+    const s = S.store('x');
+    s.entries = [
+        S.newEntry('a', { enabled: true, text: 'a', position: S.POS.IN_CHAT, depth: 1, role: S.ROLE.SYSTEM }),
+        S.newEntry('b', { enabled: true, text: 'b', position: S.POS.IN_CHAT, depth: 1, role: S.ROLE.USER }),
+        S.newEntry('c', { enabled: true, text: 'c', position: S.POS.IN_CHAT, depth: 3, role: S.ROLE.SYSTEM }),
+        S.newEntry('d', { enabled: true, text: 'd', position: S.POS.IN_CHAT, depth: 1, role: S.ROLE.SYSTEM }),
+    ];
+    S.syncInjections();
+    const vals = Object.values(injected).map(v => `${v.depth}/${v.role}:${v.value}`).sort();
+    assert.deepEqual(vals, ['1/0:a\n\nd', '1/1:b', '3/0:c']);
+});
+
+test('для «перед/после промта» роль всегда system', () => {
+    const s = S.store('x');
+    Object.assign(s.entries[0], { enabled: true, text: 'A', position: S.POS.IN_PROMPT, role: S.ROLE.ASSISTANT });
+    S.syncInjections();
+    assert.equal(Object.values(injected)[0].role, S.ROLE.SYSTEM);
+});
+
+test('переименование чата переносит привязки', () => {
+    const s = S.store('x');
+    const e = s.entries[0];
+    Object.assign(e, { excludeChats: ['old', 'keep'], onlyChats: ['old'] });
+    assert.equal(S.renameChatId('old.jsonl', 'new.jsonl'), true);
+    assert.deepEqual(e.excludeChats, ['new', 'keep']);
+    assert.deepEqual(e.onlyChats, ['new']);
+    assert.equal(S.renameChatId('nope', 'x'), false);
+    e.excludeChats = ['a', 'b'];
+    S.renameChatId('a', 'b');
+    assert.deepEqual(e.excludeChats, ['b']);
+});
+
+test('импорт: пустые значения → значения по умолчанию', () => {
+    const [e] = S.parseImport([{ text: 'x', position: null, depth: '', role: null }]);
+    assert.equal(e.position, S.POS.IN_CHAT);
+    assert.equal(e.depth, 4);
+    assert.equal(e.role, S.ROLE.SYSTEM);
+    assert.equal(S.parseImport([{ name: 'lorebook entry', content: 'x' }]).length, 0);
 });
 
 test('исключение для чата: «все чаты» минус этот', () => {

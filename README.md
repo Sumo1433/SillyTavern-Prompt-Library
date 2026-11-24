@@ -15,7 +15,7 @@ A library of your own prompts. Think of it as Author's Note with as many entries
 - Add, duplicate, delete, drag to reorder, and search by name or text.
 - Export and import the library as JSON (per-chat settings are not exported).
 - Macros such as `{{char}}` and `{{user}}` work.
-- The UI follows the SillyTavern language: English, Russian, Ukrainian, Chinese.
+- The UI follows the SillyTavern language: English, Russian, Ukrainian, Chinese (Simplified; Traditional Chinese also gets Simplified).
 - Colors come from your active theme, and on phones the window opens full screen.
 
 ## Install

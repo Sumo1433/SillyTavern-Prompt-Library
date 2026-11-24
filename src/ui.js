@@ -11,7 +11,8 @@ const esc = s => String(s ?? '')
 
 let host = null;
 let openId = null;     // какая карточка раскрыта
-let query = '';
+let query = '';         // как набрано в поле (без trim — иначе нельзя набрать пробел)
+let lastFocus = null;   // куда вернуть фокус после закрытия
 
 const $q = sel => host.querySelector(sel);
 
@@ -33,9 +34,9 @@ export function buildPanel() {
             </div>
           </div>
           <div class="plib-head-actions">
-            <button type="button" class="plib-icon-btn" data-act="import" title="${esc(t('importBtn'))}"><i class="fa-solid fa-file-import"></i></button>
-            <button type="button" class="plib-icon-btn" data-act="export" title="${esc(t('exportBtn'))}"><i class="fa-solid fa-file-export"></i></button>
-            <button type="button" class="plib-icon-btn" data-act="close" title="${esc(t('close'))}"><i class="fa-solid fa-xmark"></i></button>
+            <button type="button" class="plib-icon-btn" data-act="import" title="${esc(t('importBtn'))}" aria-label="${esc(t('importBtn'))}"><i class="fa-solid fa-file-import"></i></button>
+            <button type="button" class="plib-icon-btn" data-act="export" title="${esc(t('exportBtn'))}" aria-label="${esc(t('exportBtn'))}"><i class="fa-solid fa-file-export"></i></button>
+            <button type="button" class="plib-icon-btn" data-act="close" title="${esc(t('close'))}" aria-label="${esc(t('close'))}"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </header>
         <div class="plib-toolbar">
@@ -47,16 +48,16 @@ export function buildPanel() {
         </div>
         <div class="plib-list" id="plib_list"></div>
         <footer class="plib-foot">${esc(t('footer'))}</footer>
-        <input type="file" id="plib_file" accept=".json,application/json" hidden>
+        <input type="file" id="plib_file" accept=".json,application/json,application/octet-stream,text/plain" hidden>
       </section>`;
     document.body.append(host);
 
     host.addEventListener('click', onClick);
     host.addEventListener('input', onInput);
     host.addEventListener('change', onChange);
-    host.addEventListener('keydown', e => {
-        if (e.key === 'Escape') { e.stopPropagation(); closePanel(); }
-    });
+    // Перехват клавиш в фазе захвата: пока окно открыто, горячие клавиши таверны
+    // (стрелки — свайпы, Alt+Enter — «Продолжить», Escape — стоп генерации) не должны срабатывать.
+    window.addEventListener('keydown', onKeyCapture, true);
     $q('#plib_file').addEventListener('change', onImportFile);
 }
 
@@ -68,8 +69,22 @@ function applyBaseColor() {
     else host.style.removeProperty('--plib-base');
 }
 
+function onKeyCapture(e) {
+    if (!isOpen()) return;
+    if (document.querySelector('dialog[open]')) return;   // поверх открыт попап таверны — клавиши его
+    if (e.key === 'Escape') {
+        if (e.isComposing) return;                         // Escape отменяет набор IME, а не закрывает окно
+        e.preventDefault();
+        e.stopPropagation();
+        closePanel();
+        return;
+    }
+    e.stopPropagation();   // поведение по умолчанию (ввод текста, Tab) сохраняется
+}
+
 export function openPanel() {
     if (!host) buildPanel();
+    if (!isOpen()) lastFocus = document.activeElement;
     applyBaseColor();
     host.hidden = false;
     document.documentElement.classList.add('plib-open');
@@ -81,6 +96,8 @@ export function closePanel() {
     if (!host) return;
     host.hidden = true;
     document.documentElement.classList.remove('plib-open');
+    if (lastFocus && document.contains(lastFocus)) { try { lastFocus.focus({ preventScroll: true }); } catch { /* ignore */ } }
+    lastFocus = null;
 }
 
 export const isOpen = () => !!host && !host.hidden;
@@ -97,8 +114,8 @@ function badges(e, chatId) {
     else b.push(`<span class="plib-badge">${esc(t('badgeBefore'))}</span>`);
     if (!e.text.trim()) b.push(`<span class="plib-badge plib-badge-warn">${esc(t('badgeEmpty'))}</span>`);
     if (chatId && e.scope === 'all' && e.excludeChats.includes(chatId)) b.push(`<span class="plib-badge plib-badge-warn">${esc(t('badgeOffHere'))}</span>`);
-    if (e.scope === 'only') {
-        b.push(chatId && e.onlyChats.includes(chatId)
+    if (e.scope === 'only' && chatId) {
+        b.push(e.onlyChats.includes(chatId)
             ? `<span class="plib-badge plib-badge-accent">${esc(t('badgeOnlyHere'))}</span>`
             : `<span class="plib-badge plib-badge-warn">${esc(t('badgeOnlyOther'))}</span>`);
     }
@@ -110,8 +127,8 @@ function roleName(r) {
 }
 
 function matches(e) {
-    if (!query) return true;
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
     return e.name.toLowerCase().includes(q) || e.text.toLowerCase().includes(q);
 }
 
@@ -119,14 +136,14 @@ function cardHead(e, chatId) {
     return `
       <span class="plib-grip" title="${esc(t('dragTitle'))}"><i class="fa-solid fa-grip-vertical"></i></span>
       <label class="plib-switch" title="${esc(t('toggleTitle'))}">
-        <input type="checkbox" data-f="enabled" ${e.enabled ? 'checked' : ''}>
+        <input type="checkbox" data-f="enabled" ${e.enabled ? 'checked' : ''} aria-label="${esc(`${t('toggleTitle')}: ${e.name.trim() || t('untitled')}`)}">
         <span class="plib-slider"></span>
       </label>
-      <button type="button" class="plib-title-btn" data-act="toggle-open">
+      <button type="button" class="plib-title-btn" data-act="toggle-open" aria-expanded="${openId === e.id}">
         <span class="plib-name">${esc(e.name.trim() || t('untitled'))}</span>
         <span class="plib-badges">${badges(e, chatId)}</span>
       </button>
-      <button type="button" class="plib-icon-btn plib-chev" data-act="toggle-open" title="${esc(t('editTitle'))}"><i class="fa-solid fa-chevron-down"></i></button>`;
+      <button type="button" class="plib-icon-btn plib-chev" data-act="toggle-open" title="${esc(t('editTitle'))}" aria-label="${esc(t('editTitle'))}" aria-expanded="${openId === e.id}"><i class="fa-solid fa-chevron-down"></i></button>`;
 }
 
 function editor(e, chatId) {
@@ -169,8 +186,8 @@ function editor(e, chatId) {
         </div>
         <div class="plib-chats">
           <div class="plib-seg" role="radiogroup" aria-label="${esc(t('scope'))}">
-            <button type="button" data-act="scope" data-v="all" class="${e.scope === 'all' ? 'on' : ''}">${esc(t('scopeAll'))}</button>
-            <button type="button" data-act="scope" data-v="only" class="${e.scope === 'only' ? 'on' : ''}">${esc(t('scopeOnly'))}</button>
+            <button type="button" role="radio" aria-checked="${e.scope === 'all'}" data-act="scope" data-v="all" class="${e.scope === 'all' ? 'on' : ''}">${esc(t('scopeAll'))}</button>
+            <button type="button" role="radio" aria-checked="${e.scope === 'only'}" data-act="scope" data-v="only" class="${e.scope === 'only' ? 'on' : ''}">${esc(t('scopeOnly'))}</button>
           </div>
           <label class="plib-switch-row ${chatId ? '' : 'plib-dim'}">
             <span class="plib-switch">
@@ -188,13 +205,48 @@ function editor(e, chatId) {
       </div>`;
 }
 
-function render() {
+/** Имя персонажа или группы текущего чата — для подзаголовка. */
+function chatLabel() {
+    const c = ctx();
+    try {
+        if (c.groupId) return c.groups?.find(g => String(g.id) === String(c.groupId))?.name || '';
+        if (c.characterId !== undefined && c.characterId !== null) return c.characters?.[c.characterId]?.name || '';
+    } catch { /* ignore */ }
+    return '';
+}
+
+function renderSubtitle() {
     const list = entries();
     const chatId = currentChatId();
     const active = list.filter(e => isActive(e, chatId)).length;
-    $q('#plib_sub').textContent = `${t('subtitle', active, list.length)} · ${chatId ? `${t('chat')}: ${chatId}` : t('noChat')}`;
-    const search = $q('#plib_search');
-    if (search.value !== query) search.value = query;
+    const sub = $q('#plib_sub');
+    sub.textContent = `${t('subtitle', active, list.length)} · ${chatId ? `${t('chat')}: ${chatLabel() || chatId}` : t('noChat')}`;
+    sub.title = chatId;
+}
+
+/** Описание элемента с фокусом, чтобы найти его же после перерисовки. */
+function focusKey() {
+    const el = document.activeElement;
+    if (!el || !host.contains(el)) return null;
+    return { id: idOf(el), act: el.dataset?.act, f: el.dataset?.f, v: el.dataset?.v };
+}
+
+function restoreFocus(key) {
+    if (host.contains(document.activeElement)) return;
+    let el = null;
+    if (key) {
+        const scope = key.id ? cardEl(key.id) : host;
+        const sel = key.f ? `[data-f="${key.f}"]` : key.act ? `[data-act="${key.act}"]${key.v ? `[data-v="${key.v}"]` : ''}` : null;
+        if (scope && sel) el = scope.querySelector(sel);
+    }
+    (el || $q('.plib-panel'))?.focus({ preventScroll: true });
+}
+
+function render() {
+    const fk = focusKey();
+    const list = entries();
+    const chatId = currentChatId();
+    renderSubtitle();
 
     const box = $q('#plib_list');
     const shown = list.filter(matches);
@@ -208,6 +260,7 @@ function render() {
           </article>`).join('');
     }
     initSortable(box);
+    if (isOpen()) restoreFocus(fk);
 }
 
 /** Обновить только шапку карточки и подзаголовок — чтобы не терять фокус при наборе текста. */
@@ -222,8 +275,8 @@ function softUpdate(id) {
     if (name) name.textContent = e.name.trim() || t('untitled');
     const b = card.querySelector('.plib-badges');
     if (b) b.innerHTML = badges(e, chatId);
-    const list = entries();
-    $q('#plib_sub').textContent = `${t('subtitle', list.filter(x => isActive(x, chatId)).length, list.length)} · ${chatId ? `${t('chat')}: ${chatId}` : t('noChat')}`;
+    card.querySelector('[data-f="enabled"]')?.setAttribute('aria-label', `${t('toggleTitle')}: ${e.name.trim() || t('untitled')}`);
+    renderSubtitle();
 }
 
 function initSortable(box) {
@@ -231,7 +284,7 @@ function initSortable(box) {
     if (!$?.fn?.sortable) return;
     const $box = $(box);
     if ($box.data('ui-sortable')) $box.sortable('destroy');
-    if (query) return;   // при поиске порядок не меняем: видна только часть списка
+    if (query.trim()) return;   // при поиске порядок не меняем: видна только часть списка
     const coarse = window.matchMedia?.('(pointer: coarse)').matches;
     $box.sortable({
         items: '> .plib-card',
@@ -240,12 +293,13 @@ function initSortable(box) {
         delay: coarse ? 300 : 30,
         tolerance: 'pointer',
         placeholder: 'plib-card-placeholder',
+        start: (_, ui) => ui.placeholder.height(ui.item.outerHeight()),
         update: () => {
             const order = [...box.querySelectorAll('.plib-card')].map(el => el.dataset.id);
             const list = entries();
             list.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
             save();
-            render();
+            setTimeout(render, 0);   // не уничтожаем sortable внутри его же обработчика
         },
     });
 }
@@ -270,6 +324,7 @@ async function onClick(ev) {
             entries().unshift(ne);
             openId = ne.id;
             query = '';
+            $q('#plib_search').value = '';
             save();
             render();
             cardEl(ne.id)?.querySelector('[data-f="name"]')?.select();
@@ -336,9 +391,8 @@ async function confirmDelete(name) {
 function onInput(ev) {
     const el = ev.target;
     if (el.id === 'plib_search') {
-        query = el.value.trim();
+        query = el.value;
         render();
-        el.focus();
         return;
     }
     const f = el.dataset?.f;

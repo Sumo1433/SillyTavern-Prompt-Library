@@ -20,16 +20,19 @@ export function newEntry(name, extra = {}) {
     return normalizeEntry({ id: uid(), name, ...extra });
 }
 
+// null, '' и прочие пустые значения → значение по умолчанию (Number(null) === 0 — ловушка)
+const num = v => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) ? Number(v) : NaN;
+
 const clampInt = (v, lo, hi, def) => {
-    const n = Math.trunc(Number(v));
+    const n = Math.trunc(num(v));
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def;
 };
 
 /** Приводит запись к корректному виду (для старых настроек и импорта). */
 export function normalizeEntry(e) {
     const src = e && typeof e === 'object' ? e : {};
-    const pos = Number(src.position);
-    const role = Number(src.role);
+    const pos = num(src.position);
+    const role = num(src.role);
     const ids = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === 'string' && x))] : [];
     return {
         id: typeof src.id === 'string' && src.id ? src.id : uid(),
@@ -102,9 +105,14 @@ export function chatToggleState(e, chatId) {
     return e.scope === 'only' ? e.onlyChats.includes(chatId) : !e.excludeChats.includes(chatId);
 }
 
+/** Роль имеет смысл только для вставки «в чате»; для «перед/после промта» всегда system. */
+export const effectiveRole = e => e.position === POS.IN_CHAT ? e.role : ROLE.SYSTEM;
+
 /**
- * Синхронизирует инжекты с библиотекой: убирает все свои ключи и ставит заново
- * только активные записи. Порядок ключей = порядок в библиотеке (таверна сортирует ключи).
+ * Синхронизирует инжекты с библиотекой: убирает все свои ключи и ставит заново только
+ * активные записи. Записи с одинаковыми позицией, глубиной и ролью склеиваются в один
+ * инжект в порядке библиотеки — так порядок одинаков в Chat Completion и Text Completion
+ * (CC вставляет «перед/после промта» в обратном порядке, если ключей несколько).
  */
 export function syncInjections() {
     const c = ctx();
@@ -113,11 +121,36 @@ export function syncInjections() {
         for (const k of Object.keys(prompts)) if (k.startsWith(KEY_PREFIX)) delete prompts[k];
     }
     const chatId = currentChatId();
-    entries().forEach((e, i) => {
-        if (!isActive(e, chatId)) return;
-        const key = `${KEY_PREFIX}${String(i).padStart(4, '0')}_${e.id}`;
-        c.setExtensionPrompt(key, e.text, e.position, e.depth, false, e.role);
-    });
+    const groups = new Map();
+    for (const e of entries()) {
+        if (!isActive(e, chatId)) continue;
+        const role = effectiveRole(e);
+        const depth = e.position === POS.IN_CHAT ? e.depth : 0;
+        const key = `${KEY_PREFIX}${e.position}_${depth}_${role}`;
+        if (!groups.has(key)) groups.set(key, { position: e.position, depth, role, texts: [] });
+        groups.get(key).texts.push(e.text.trim());
+    }
+    for (const [key, g] of groups) {
+        c.setExtensionPrompt(key, g.texts.join('\n\n'), g.position, g.depth, false, g.role);
+    }
+}
+
+/** Чат переименован: переносим привязки со старого имени файла на новое. */
+export function renameChatId(oldId, newId) {
+    const strip = v => String(v ?? '').replace(/\.jsonl$/i, '');
+    const from = strip(oldId);
+    const to = strip(newId);
+    if (!from || !to || from === to) return false;
+    let changed = false;
+    for (const e of entries()) {
+        for (const list of [e.excludeChats, e.onlyChats]) {
+            const i = list.indexOf(from);
+            if (i < 0) continue;
+            if (list.includes(to)) list.splice(i, 1); else list[i] = to;
+            changed = true;
+        }
+    }
+    return changed;
 }
 
 export function save() {
@@ -142,6 +175,6 @@ export function parseImport(json) {
     const list = Array.isArray(json) ? json : Array.isArray(json?.entries) ? json.entries : null;
     if (!list) return [];
     return list
-        .filter(x => x && typeof x === 'object' && (typeof x.text === 'string' || typeof x.name === 'string'))
+        .filter(x => x && typeof x === 'object' && typeof x.text === 'string')
         .map(x => normalizeEntry({ ...x, id: uid(), scope: 'all', excludeChats: [], onlyChats: [] }));
 }
