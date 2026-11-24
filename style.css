@@ -1,0 +1,494 @@
+/* Prompt Library — оформление берёт цвета из активной темы таверны */
+
+#plib_host {
+    --plib-accent: var(--SmartThemeQuoteColor, #e18a24);
+    --plib-text: var(--SmartThemeBodyColor, #dcdcd2);
+    --plib-border: var(--SmartThemeBorderColor, rgba(255, 255, 255, .15));
+    --plib-bg: var(--SmartThemeBlurTintColor, rgba(23, 23, 23, .9));
+    --plib-shadow: var(--SmartThemeShadowColor, rgba(0, 0, 0, .5));
+    --plib-warn: #e0a24a;
+    --plib-danger: #e06363;
+    --plib-radius: 14px;
+
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--plib-text);
+    font-size: var(--mainFontSize, 15px);
+}
+
+#plib_host[hidden] { display: none; }
+
+#plib_host .plib-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, .65);
+    backdrop-filter: blur(3px);
+    animation: plib-fade .18s ease-out;
+}
+
+#plib_host .plib-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(780px, calc(100vw - 24px));
+    max-height: min(880px, calc(100dvh - 24px));
+    /* Непрозрачная подложка цвета темы: на телефоне таверна часто отключает размытие,
+       и полупрозрачный фон показывал бы чат сквозь окно. --plib-base ставит ui.js. */
+    background: linear-gradient(var(--plib-bg), var(--plib-bg)), var(--plib-base, #161616);
+    background: linear-gradient(color-mix(in srgb, var(--plib-bg) 88%, #000 12%), color-mix(in srgb, var(--plib-bg) 88%, #000 12%)), var(--plib-base, #161616);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
+    border: 1px solid var(--plib-border);
+    border-radius: calc(var(--plib-radius) + 4px);
+    box-shadow: 0 24px 60px var(--plib-shadow), 0 0 0 1px rgba(255, 255, 255, .03) inset;
+    overflow: hidden;
+    outline: none;
+    animation: plib-pop .22s cubic-bezier(.2, .9, .3, 1.15);
+}
+
+@keyframes plib-fade { from { opacity: 0; } }
+@keyframes plib-pop { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+
+/* ---------- шапка ---------- */
+
+#plib_host .plib-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px 12px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--plib-accent) 14%, transparent), transparent);
+    border-bottom: 1px solid var(--plib-border);
+}
+
+#plib_host .plib-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+#plib_host .plib-logo {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    color: var(--plib-accent);
+    background: color-mix(in srgb, var(--plib-accent) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--plib-accent) 40%, transparent);
+    font-size: 18px;
+}
+
+#plib_host .plib-brand-text { min-width: 0; }
+#plib_host h3 { margin: 0; font-size: 1.2em; line-height: 1.2; letter-spacing: .01em; }
+
+#plib_host .plib-sub {
+    margin-top: 2px;
+    font-size: .82em;
+    opacity: .7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#plib_host .plib-head-actions { display: flex; gap: 6px; flex: none; }
+
+#plib_host .plib-icon-btn {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    opacity: .8;
+    transition: background .15s, border-color .15s, opacity .15s, transform .15s;
+}
+
+#plib_host .plib-icon-btn:hover,
+#plib_host .plib-icon-btn:focus-visible {
+    opacity: 1;
+    background: rgba(255, 255, 255, .07);
+    border-color: var(--plib-border);
+    outline: none;
+}
+
+/* ---------- панель инструментов ---------- */
+
+#plib_host .plib-toolbar {
+    display: flex;
+    gap: 10px;
+    padding: 12px 18px;
+}
+
+#plib_host .plib-search {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--plib-border);
+    background: rgba(0, 0, 0, .2);
+    transition: border-color .15s;
+}
+
+#plib_host .plib-search:focus-within { border-color: var(--plib-accent); }
+#plib_host .plib-search i { opacity: .55; }
+
+#plib_host .plib-search input {
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+}
+
+#plib_host .plib-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--plib-accent) 60%, transparent);
+    background: color-mix(in srgb, var(--plib-accent) 22%, transparent);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+}
+
+#plib_host .plib-add:hover { background: color-mix(in srgb, var(--plib-accent) 34%, transparent); }
+#plib_host .plib-add:active { transform: scale(.97); }
+
+/* ---------- список ---------- */
+
+#plib_host .plib-list {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#plib_host .plib-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 48px 12px;
+    opacity: .6;
+    text-align: center;
+}
+
+#plib_host .plib-empty i { font-size: 28px; }
+
+#plib_host .plib-card {
+    position: relative;
+    border-radius: var(--plib-radius);
+    border: 1px solid var(--plib-border);
+    background: rgba(255, 255, 255, .03);
+    transition: border-color .2s, background .2s, box-shadow .2s;
+}
+
+#plib_host .plib-card::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 12px;
+    bottom: 12px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--plib-accent);
+    opacity: 0;
+    transition: opacity .2s;
+}
+
+#plib_host .plib-card.is-active { border-color: color-mix(in srgb, var(--plib-accent) 45%, var(--plib-border)); background: color-mix(in srgb, var(--plib-accent) 6%, transparent); }
+#plib_host .plib-card.is-active::before { opacity: 1; }
+#plib_host .plib-card.is-off .plib-name { opacity: .6; }
+#plib_host .plib-card.is-open { box-shadow: 0 8px 26px rgba(0, 0, 0, .25); }
+
+#plib_host .plib-card-placeholder {
+    height: 58px;
+    border-radius: var(--plib-radius);
+    border: 2px dashed color-mix(in srgb, var(--plib-accent) 50%, transparent);
+    visibility: visible !important;
+}
+
+#plib_host .plib-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 10px 10px 6px;
+    min-height: 56px;
+}
+
+#plib_host .plib-grip {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 34px;
+    cursor: grab;
+    opacity: .4;
+    touch-action: none;
+}
+
+#plib_host .plib-grip:hover { opacity: .8; }
+#plib_host .ui-sortable-helper { cursor: grabbing; box-shadow: 0 14px 34px rgba(0, 0, 0, .45); }
+
+#plib_host .plib-title-btn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    padding: 2px 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+#plib_host .plib-name {
+    max-width: 100%;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#plib_host .plib-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+
+#plib_host .plib-badge {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: .74em;
+    line-height: 1.6;
+    border: 1px solid var(--plib-border);
+    background: rgba(255, 255, 255, .04);
+    opacity: .85;
+    white-space: nowrap;
+}
+
+#plib_host .plib-badge-warn { color: var(--plib-warn); border-color: color-mix(in srgb, var(--plib-warn) 45%, transparent); }
+#plib_host .plib-badge-accent { color: var(--plib-accent); border-color: color-mix(in srgb, var(--plib-accent) 45%, transparent); }
+
+#plib_host .plib-chev i { transition: transform .2s; }
+#plib_host .plib-card.is-open .plib-chev i { transform: rotate(180deg); }
+
+/* ---------- тумблер ---------- */
+
+#plib_host .plib-switch {
+    position: relative;
+    flex: none;
+    display: inline-block;
+    width: 42px;
+    height: 24px;
+    cursor: pointer;
+}
+
+#plib_host .plib-switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: inherit;
+    z-index: 1;
+}
+
+#plib_host .plib-slider {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .12);
+    border: 1px solid var(--plib-border);
+    transition: background .2s, border-color .2s;
+}
+
+#plib_host .plib-slider::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--plib-text);
+    opacity: .75;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+    transition: transform .2s cubic-bezier(.3, 1.4, .5, 1), opacity .2s, background .2s;
+}
+
+#plib_host .plib-switch input:checked + .plib-slider {
+    background: color-mix(in srgb, var(--plib-accent) 70%, transparent);
+    border-color: var(--plib-accent);
+}
+
+#plib_host .plib-switch input:checked + .plib-slider::after { transform: translateX(18px); opacity: 1; background: #fff; }
+#plib_host .plib-switch input:focus-visible + .plib-slider { box-shadow: 0 0 0 3px color-mix(in srgb, var(--plib-accent) 35%, transparent); }
+#plib_host .plib-switch input:disabled { cursor: not-allowed; }
+
+/* ---------- редактор ---------- */
+
+#plib_host .plib-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px 14px 14px;
+    border-top: 1px solid var(--plib-border);
+    padding-top: 14px;
+    animation: plib-fade .18s ease-out;
+}
+
+#plib_host .plib-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; margin: 0; }
+#plib_host .plib-field > span { font-size: .8em; opacity: .7; letter-spacing: .02em; }
+
+#plib_host .plib-field .text_pole {
+    width: 100%;
+    margin: 0;
+    border-radius: 9px;
+    box-sizing: border-box;
+}
+
+#plib_host .plib-text {
+    min-height: 120px;
+    resize: vertical;
+    font-family: var(--monoFontFamily, inherit);
+    line-height: 1.45;
+}
+
+#plib_host .plib-grid { display: grid; grid-template-columns: 2fr 1fr 1.3fr; gap: 10px; }
+#plib_host .plib-dim { opacity: .45; }
+
+#plib_host .plib-chats {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    padding: 10px 12px;
+    border-radius: 11px;
+    background: rgba(0, 0, 0, .18);
+    border: 1px solid var(--plib-border);
+}
+
+#plib_host .plib-seg {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid var(--plib-border);
+}
+
+#plib_host .plib-seg button {
+    padding: 5px 12px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: .88em;
+    opacity: .7;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+}
+
+#plib_host .plib-seg button.on {
+    opacity: 1;
+    background: color-mix(in srgb, var(--plib-accent) 28%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--plib-accent) 50%, transparent) inset;
+}
+
+#plib_host .plib-switch-row { display: inline-flex; align-items: center; gap: 10px; margin: 0; cursor: pointer; font-size: .92em; }
+#plib_host .plib-counter { width: 100%; font-size: .8em; opacity: .7; }
+
+#plib_host .plib-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--plib-accent);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#plib_host .plib-editor-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+#plib_host .plib-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-radius: 9px;
+    border: 1px solid var(--plib-border);
+    background: rgba(255, 255, 255, .04);
+    color: inherit;
+    font: inherit;
+    font-size: .9em;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+}
+
+#plib_host .plib-btn:hover { background: rgba(255, 255, 255, .09); }
+#plib_host .plib-danger:hover { color: var(--plib-danger); border-color: color-mix(in srgb, var(--plib-danger) 55%, transparent); background: color-mix(in srgb, var(--plib-danger) 12%, transparent); }
+
+/* ---------- подвал ---------- */
+
+#plib_host .plib-foot {
+    padding: 10px 18px 14px;
+    border-top: 1px solid var(--plib-border);
+    font-size: .76em;
+    line-height: 1.45;
+    opacity: .6;
+}
+
+/* ---------- телефон ---------- */
+
+@media (max-width: 600px) {
+    #plib_host { align-items: stretch; }
+
+    #plib_host .plib-panel {
+        width: 100vw;
+        max-height: none;
+        height: 100%;
+        border-radius: 0;
+        border: 0;
+    }
+
+    #plib_host .plib-head { padding: 12px 12px 10px; padding-top: max(12px, env(safe-area-inset-top)); }
+    #plib_host .plib-toolbar { padding: 10px 12px; }
+    #plib_host .plib-add span { display: none; }
+    #plib_host .plib-add { width: 42px; padding: 0; justify-content: center; }
+    #plib_host .plib-list { padding: 2px 10px 12px; }
+    #plib_host .plib-grid { grid-template-columns: 1fr 1fr; }
+    #plib_host .plib-grid > .plib-field:first-child { grid-column: 1 / -1; }
+    #plib_host .plib-foot { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+    #plib_host .plib-icon-btn { width: 38px; height: 38px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #plib_host *, #plib_host *::before, #plib_host *::after { animation: none !important; transition: none !important; }
+}
+
+html.plib-open body { overflow: hidden; }

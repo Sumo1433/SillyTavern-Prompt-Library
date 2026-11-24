@@ -1,0 +1,11 @@
+{
+  "display_name": "Prompt Library",
+  "loading_order": 60,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Deadsum (t.me/Deadsum)",
+  "version": "0.1.0",
+  "homePage": "https://github.com/Sumo1433/SillyTavern-Prompt-Library"
+}
